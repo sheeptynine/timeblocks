@@ -77,6 +77,19 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
 .recent{display:flex;gap:6px;overflow-x:auto}
 .recent .chip{flex:0 0 auto}
 .hint{font-size:12px;color:var(--muted);margin:0}
+.addbtn{border:1px dashed var(--line);background:none;color:var(--accent);border-radius:999px;padding:8px 12px;font:500 13px var(--body);cursor:pointer;justify-self:start}
+.modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+.modal .card{width:100%;max-width:560px;background:var(--surface);border-radius:16px 16px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:12px;max-height:calc(var(--vvh,100vh) - 24px);overflow-y:auto}
+.modal h2{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:20px}
+.modal label{display:grid;gap:6px;font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.modal select{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:0 10px;font:16px var(--body)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sw{width:34px;height:34px;border-radius:9px;border:2px solid transparent;cursor:pointer;padding:0}
+.sw.on{border-color:var(--fg);box-shadow:0 0 0 2px var(--surface) inset}
+.swatches input[type=color]{width:34px;height:34px;border:1px solid var(--line);border-radius:9px;padding:0;background:none;cursor:pointer}
+.preview{justify-self:start}
+.row2{display:flex;gap:8px;justify-content:flex-end}
+.err{color:var(--warn);font-size:13px;margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:30;background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px}
 </style>
 </head>
@@ -109,6 +122,15 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
   <p class="hint" id="hint" hidden>Range on: tap the first and last block to select everything between.</p>
 </div></div>
 <div class="toast" id="toast" hidden></div>
+<div class="modal" id="newModal" hidden><div class="card" role="dialog" aria-labelledby="newTitle">
+  <h2 id="newTitle">New activity</h2>
+  <label>Name<input class="search" id="newName" autocomplete="off" maxlength="40" placeholder="e.g. Piano practice"></label>
+  <label>Category<select id="newCat"></select></label>
+  <label>Colour<div class="swatches" id="newSw"></div></label>
+  <span class="chip preview" id="newPrev">Preview</span>
+  <p class="err" id="newErr" hidden></p>
+  <div class="row2"><button class="btn" id="newCancel">Cancel</button><button class="btn primary" id="newSave">Add to Palette</button></div>
+</div></div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -214,9 +236,35 @@ function renderPicker(){
   if(!q){const recent=load("mm-recent",[]).map(x=>lookup.get(x.toLowerCase())).filter(Boolean);
     if(recent.length){recent.forEach(it=>rc.appendChild(chip(it,()=>assign(it.name))));rw.hidden=false}}
   const list=matches();
-  if(!list.length){const p=document.createElement("p");p.className="nomatch";p.textContent="No activity matches \u201c"+q+"\u201d. Add it to the Palette sheet, then reopen the app.";pk.appendChild(p);return}
+  const add=document.createElement("button");add.className="addbtn";add.textContent=q?"+ Create \u201c"+q+"\u201d":"+ New activity";add.onclick=()=>openNew(q);
+  if(!list.length){const p=document.createElement("p");p.className="nomatch";p.textContent="No activity matches \u201c"+q+"\u201d.";pk.append(p,add);return}
   list.forEach(cat=>{const d=document.createElement("div");d.className="cat";const h=document.createElement("h3");h.textContent=cat.name;const cc=document.createElement("div");cc.className="chips";cat.items.forEach(it=>cc.appendChild(chip(it,()=>assign(it.name))));d.append(h,cc);pk.appendChild(d)});
+  pk.appendChild(add);
 }
+let newColor=null;
+function catColors(name){const c=palette.find(x=>x.name===name);const seen=[];(c?c.items:[]).forEach(it=>{const k=it.color.toLowerCase();if(!seen.includes(k))seen.push(k)});return seen}
+function setNewColor(col){newColor=col;$("newSw").querySelectorAll(".sw").forEach(b=>b.classList.toggle("on",b.dataset.c===col));const p=$("newPrev");p.style.background=col;p.style.color=textOn(col);p.textContent=$("newName").value.trim()||"Preview"}
+function renderSwatches(){const w=$("newSw");w.innerHTML="";const cols=catColors($("newCat").value);
+  cols.forEach(col=>{const b=document.createElement("button");b.className="sw";b.type="button";b.dataset.c=col;b.style.background=col;b.setAttribute("aria-label","Colour "+col);b.onclick=()=>setNewColor(col);w.appendChild(b)});
+  const pick=document.createElement("input");pick.type="color";pick.value=cols[0]||"#888888";pick.title="Custom colour";pick.oninput=()=>setNewColor(pick.value.toLowerCase());w.appendChild(pick);
+  setNewColor(cols[0]||"#888888")}
+function openNew(q){const sel=$("newCat");sel.innerHTML="";palette.forEach(c=>{const o=document.createElement("option");o.value=c.name;o.textContent=c.name;sel.appendChild(o)});
+  const n=$("newName");n.value=q||"";$("newErr").hidden=true;$("newModal").hidden=false;renderSwatches();setTimeout(()=>n.focus(),50)}
+function closeNew(){$("newModal").hidden=true}
+$("newCat").onchange=renderSwatches;
+$("newName").addEventListener("input",()=>{$("newPrev").textContent=$("newName").value.trim()||"Preview"});
+$("newCancel").onclick=closeNew;
+$("newModal").addEventListener("click",e=>{if(e.target.id==="newModal")closeNew()});
+$("newSave").onclick=async()=>{
+  const name=$("newName").value.trim(),cat=$("newCat").value,err=$("newErr");err.hidden=true;
+  if(!name){err.textContent="Give it a name.";err.hidden=false;return}
+  if(lookup.has(name.toLowerCase())){err.textContent="\u201c"+name+"\u201d is already in the Palette.";err.hidden=false;return}
+  const btn=$("newSave");btn.disabled=true;btn.textContent="Adding…";
+  try{const p=await gs("addActivity",cat,name,newColor);setPalette(p);closeNew();toast("Added to the Palette");
+    if(selected.size)assign(name);else render()}
+  catch(e){const m=(e&&e.message)||String(e);err.textContent=m==="Unknown request"?"Your Code.gs needs the latest update before this works.":m;err.hidden=false}
+  finally{btn.disabled=false;btn.textContent="Add to Palette"}
+};
 $("search").addEventListener("input",renderPicker);
 $("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const m=matches();if(m.length&&$("search").value.trim())assign(m[0].items[0].name)}});
 $("rangeBtn").onclick=()=>{rangeMode=!rangeMode;anchor=null;render()};
