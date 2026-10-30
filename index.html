@@ -101,7 +101,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
   <div class="top">
     <span class="count" id="selcount">Tap blocks to select them</span>
     <div class="tools">
-      <button class="btn" id="rangeBtn">Range</button>
+      <button class="btn" id="rangeBtn" title="Switch between range and single-block selection">Range</button>
       <button class="btn danger" id="clearBtn" hidden>Clear</button>
       <button class="btn" id="doneBtn" hidden>Cancel</button>
     </div>
@@ -109,13 +109,13 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
   <div id="recentWrap" hidden><div class="recent" id="recent"></div></div>
   <div class="picker" id="picker" hidden></div>
   <input class="search" id="search" type="search" placeholder="Search activities or categories" autocomplete="off" enterkeyhint="done" hidden>
-  <p class="hint" id="hint" hidden>Range on: tap the first and last block to select everything between.</p>
+  <p class="hint" id="hint" hidden>Tap the first and last block to select everything between. Switch to Single to pick blocks one by one.</p>
 </div></div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 const $=id=>document.getElementById(id);
-let start=null,palette=[],lookup=new Map(),day=null,cells=Array(48).fill(""),prevCells=Array(48).fill(""),selected=new Set(),rangeMode=false,anchor=null,busy=false;
+let start=null,palette=[],lookup=new Map(),day=null,cells=Array(48).fill(""),prevCells=Array(48).fill(""),selected=new Set(),rangeMode=true,anchor=null,busy=false;
 
 const CONN_KEY="tb-conn";let conn=null;
 function readConn(){const h=new URLSearchParams(location.hash.slice(1));if(h.get("api")&&h.get("key")){conn={api:h.get("api"),key:h.get("key")};save(CONN_KEY,conn)}else conn=load(CONN_KEY,null)}
@@ -195,6 +195,7 @@ function tap(i){
   if(busy)return;
   const had=selected.size>0;
   if(rangeMode&&anchor!==null&&anchor!==i){const a=Math.min(anchor,i),b=Math.max(anchor,i);for(let k=a;k<=b;k++)selected.add(k);anchor=null}
+  else if(rangeMode&&anchor===i){selected.delete(i);anchor=null}
   else if(rangeMode){selected.add(i);anchor=i}
   else selected.has(i)?selected.delete(i):selected.add(i);
   const first=!had&&selected.size>0;
@@ -212,7 +213,7 @@ function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter
 function renderSheet(){
   const n=selected.size,c=$("selcount");document.querySelector(".wrap").classList.toggle("picking",n>0);c.innerHTML="";
   if(n){c.textContent=n+(n===1?" block":" blocks");const s=document.createElement("small");s.textContent=(n/2).toFixed(1)+" h";c.appendChild(s)}else c.textContent=rangeMode?"Tap the first block":"Tap blocks to select them";
-  $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("rangeBtn").classList.toggle("on",rangeMode);$("hint").hidden=!rangeMode||n>0;
+  $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("rangeBtn").textContent=rangeMode?"Range":"Single";$("hint").hidden=!rangeMode||n>0;
   $("search").hidden=!n;if(!n)$("search").value="";
   $("picker").hidden=!n;$("recentWrap").hidden=true;if(!n)return;
   renderPicker();
