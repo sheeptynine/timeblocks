@@ -29,6 +29,7 @@ html,body{margin:0;background:var(--bg);min-height:100%}
 body{color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 .wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 240px}
+.wrap.picking{padding-bottom:var(--vvh,100vh)}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .brand{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .brand h1{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:22px}
@@ -192,15 +193,24 @@ function render(){
 }
 function tap(i){
   if(busy)return;
+  const had=selected.size>0;
   if(rangeMode&&anchor!==null&&anchor!==i){const a=Math.min(anchor,i),b=Math.max(anchor,i);for(let k=a;k<=b;k++)selected.add(k);anchor=null}
   else if(rangeMode){selected.add(i);anchor=i}
   else selected.has(i)?selected.delete(i):selected.add(i);
+  const first=!had&&selected.size>0;
   render();
+  if(first)bringToTop(i);
+}
+function bringToTop(i){
+  const row=$("grid").children[Math.floor(i/2)];if(!row)return;
+  const head=document.querySelector("header").getBoundingClientRect().bottom;
+  const y=row.getBoundingClientRect().top+window.scrollY-head-8;
+  window.scrollTo({top:Math.max(0,y),behavior:"smooth"});
 }
 function chip(it,fn){const b=document.createElement("button");b.className="chip";b.textContent=it.name;b.style.background=it.color;b.style.color=textOn(it.color);b.onclick=fn;return b}
 function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter(n=>n!==name);rec.unshift(name);save("mm-recent",rec.slice(0,8));write([...selected],name)}
 function renderSheet(){
-  const n=selected.size,c=$("selcount");c.innerHTML="";
+  const n=selected.size,c=$("selcount");document.querySelector(".wrap").classList.toggle("picking",n>0);c.innerHTML="";
   if(n){c.textContent=n+(n===1?" block":" blocks");const s=document.createElement("small");s.textContent=(n/2).toFixed(1)+" h";c.appendChild(s)}else c.textContent=rangeMode?"Tap the first block":"Tap blocks to select them";
   $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("rangeBtn").classList.toggle("on",rangeMode);$("hint").hidden=!rangeMode||n>0;
   $("search").hidden=!n;if(!n)$("search").value="";
