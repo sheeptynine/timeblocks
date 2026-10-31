@@ -67,7 +67,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
 .btn{height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 13px var(--body);cursor:pointer}
 .btn.on,.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .btn.danger{color:var(--warn)}
-.picker{max-height:max(110px,min(calc(var(--vvh,100vh)*.45 - 60px),380px));overflow-y:auto;display:grid;gap:12px}
+.picker{max-height:max(100px,min(calc(var(--vvh,100vh)*.42 - 180px),300px));overflow-y:auto;display:grid;gap:12px}
 .cat{display:grid;gap:6px}
 .cat h3{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -101,6 +101,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
   <div class="top">
     <span class="count" id="selcount">Tap blocks to select them</span>
     <div class="tools">
+      <button class="btn" id="untilBtn" title="Select the empty blocks just before now">Until now</button>
       <button class="btn" id="rangeBtn" title="Switch between range and single-block selection">Range</button>
       <button class="btn danger" id="clearBtn" hidden>Clear</button>
       <button class="btn" id="doneBtn" hidden>Cancel</button>
@@ -213,7 +214,7 @@ function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter
 function renderSheet(){
   const n=selected.size,c=$("selcount");document.querySelector(".wrap").classList.toggle("picking",n>0);c.innerHTML="";
   if(n){c.textContent=n+(n===1?" block":" blocks");const s=document.createElement("small");s.textContent=(n/2).toFixed(1)+" h";c.appendChild(s)}else c.textContent=rangeMode?"Tap the first block":"Tap blocks to select them";
-  $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("rangeBtn").textContent=rangeMode?"Range":"Single";$("hint").hidden=!rangeMode||n>0;
+  $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("untilBtn").hidden=!start||diffDays(todayDate(),day)>0;$("rangeBtn").textContent=rangeMode?"Range":"Single";$("hint").hidden=!rangeMode||n>0;
   $("search").hidden=!n;if(!n)$("search").value="";
   $("picker").hidden=!n;$("recentWrap").hidden=true;if(!n)return;
   renderPicker();
@@ -232,6 +233,14 @@ function renderPicker(){
 }
 $("search").addEventListener("input",renderPicker);
 $("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const m=matches();if(m.length&&$("search").value.trim())assign(m[0].items[0].name)}});
+function untilNow(){
+  if(busy)return;const t=todayDate(),dd=diffDays(t,day);if(dd>0)return;
+  const n=new Date(),end=dd<0?47:n.getHours()*2+(n.getMinutes()>=30?1:0)-1;
+  if(end<0||cells[end]){toast("No empty blocks right before now");return}
+  let st=end;while(st>0&&!cells[st-1])st--;
+  selected.clear();anchor=null;for(let k=st;k<=end;k++)selected.add(k);render();bringToTop(st);
+}
+$("untilBtn").onclick=untilNow;
 $("rangeBtn").onclick=()=>{rangeMode=!rangeMode;anchor=null;render()};
 $("doneBtn").onclick=()=>{selected.clear();anchor=null;render()};
 $("clearBtn").onclick=()=>write([...selected],"");
