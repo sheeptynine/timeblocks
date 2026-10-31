@@ -29,7 +29,7 @@ html,body{margin:0;background:var(--bg);min-height:100%}
 body{color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 .wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 240px}
-.wrap.picking{padding-bottom:var(--vvh,100vh)}
+.wrap.picking{padding-bottom:var(--padh,100vh)}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .brand{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .brand h1{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:22px}
@@ -203,12 +203,16 @@ function tap(i){
   render();
   if(first)bringToTop(i);
 }
-function bringToTop(i){
+function bringToTop(i,instant){
   const row=$("grid").children[Math.floor(i/2)];if(!row)return;
   const head=document.querySelector("header").getBoundingClientRect().bottom;
-  const y=row.getBoundingClientRect().top+window.scrollY-head-8;
-  window.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+  const off=window.visualViewport?visualViewport.offsetTop:0;
+  const y=row.getBoundingClientRect().top+window.scrollY-Math.max(head,off)-8;
+  window.scrollTo({top:Math.max(0,y),behavior:instant?"auto":"smooth"});
 }
+// keep the selected blocks in view when the keyboard opens/closes
+let reTimer=null;
+function reanchor(){clearTimeout(reTimer);reTimer=setTimeout(()=>{if(selected.size)bringToTop(Math.min(...selected),true)},280)}
 function chip(it,fn){const b=document.createElement("button");b.className="chip";b.textContent=it.name;b.style.background=it.color;b.style.color=textOn(it.color);b.onclick=fn;return b}
 function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter(n=>n!==name);rec.unshift(name);save("mm-recent",rec.slice(0,8));write([...selected],name)}
 function renderSheet(){
@@ -247,7 +251,12 @@ $("clearBtn").onclick=()=>write([...selected],"");
 function go(delta){if(busy||!start)return;const d=new Date(day);d.setDate(d.getDate()+delta);if(diffDays(start,d)<0||diffDays(start,d)>365)return;day=d;cells=Array(48).fill("");prevCells=Array(48).fill("");render();loadDay().catch(e=>showError(e,loadDay))}
 $("prev").onclick=()=>go(-1);$("next").onclick=()=>go(1);$("today").onclick=()=>go(diffDays(day,todayDate()));
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&start&&!busy&&!selected.size)loadDay().catch(()=>{})});
-function fitVV(){const h=window.visualViewport?visualViewport.height:innerHeight;document.documentElement.style.setProperty("--vvh",h+"px")}
+let maxH=0,kbAt=0;
+function fitVV(){const h=window.visualViewport?visualViewport.height:innerHeight;document.documentElement.style.setProperty("--vvh",h+"px");
+  maxH=Math.max(maxH,innerHeight,h);document.documentElement.style.setProperty("--padh",maxH+"px");if(Date.now()-kbAt<1200)reanchor()}
+addEventListener("orientationchange",()=>{maxH=0;setTimeout(fitVV,300)});
+$("search").addEventListener("focus",()=>{kbAt=Date.now();reanchor();setTimeout(reanchor,450)});
+$("search").addEventListener("blur",()=>{kbAt=Date.now();setTimeout(reanchor,300)});
 if(window.visualViewport)visualViewport.addEventListener("resize",fitVV);addEventListener("resize",fitVV);fitVV();
 readConn();day=todayDate();render();boot();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
