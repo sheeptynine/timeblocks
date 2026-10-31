@@ -244,8 +244,10 @@ $("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault(
 function untilNow(){
   if(busy)return;const t=todayDate(),dd=diffDays(t,day);if(dd>0)return;
   const n=new Date(),end=dd<0?47:n.getHours()*2+(n.getMinutes()>=30?1:0)-1;
-  if(end<0||cells[end]){toast("No empty blocks right before now");return}
-  let st=end;while(st>0&&!cells[st-1])st--;
+  let st;
+  if(selected.size){st=Math.min(...selected);if(st>end){toast("Pick a block before now first");return}}
+  else{if(end<0||cells[end]){toast("No empty blocks right before now. Tap a start block first.");return}
+    st=end;while(st>0&&!cells[st-1])st--}
   selected.clear();anchor=null;for(let k=st;k<=end;k++)selected.add(k);render();bringToTop(st);focusSearch();
 }
 $("untilBtn").onclick=untilNow;
