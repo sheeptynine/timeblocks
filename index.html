@@ -30,7 +30,7 @@ body{color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;-web
 [hidden]{display:none!important}
 .wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 240px}
 .wrap.picking{padding-bottom:var(--padh,100vh)}
-header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px))) calc(-1*max(16px,env(safe-area-inset-right,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .brand{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .brand h1{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:22px}
 .status{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
@@ -56,7 +56,7 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:calc(env
 .cell .a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell.filled{border-color:transparent}
 .cell.unknown{border:1px dashed var(--warn);color:var(--warn);background:var(--surface)}
-.cell.sel{outline:3px solid var(--sel);outline-offset:-1px}
+.cell.sel{outline:3px solid var(--sel);outline-offset:-3px}
 .cell.anchor{outline-style:dashed}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.12);padding-bottom:env(safe-area-inset-bottom,0px)}
 .sheet .in{max-width:560px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));display:grid;gap:10px}
@@ -207,7 +207,21 @@ function tap(i){
 // On computers (mouse/trackpad), put the cursor in the search box so you can type right away.
 const desktop=window.matchMedia&&matchMedia("(hover: hover) and (pointer: fine)").matches;
 function focusSearch(){if(desktop&&selected.size)setTimeout(()=>{try{$("search").focus({preventScroll:true})}catch(e){}},0)}
+// Scroll so block i (the Now block) is the last row visible above the bottom panel,
+// without hiding the first selected block if the whole range fits.
+function showRecent(i,first,instant){
+  lastView=()=>showRecent(i,first,true);
+  const rows=$("grid").children,row=rows[Math.floor(i/2)];if(!row)return;
+  const head=document.querySelector("header").getBoundingClientRect().bottom;
+  const panel=document.querySelector(".sheet").getBoundingClientRect().top;
+  let y=row.getBoundingClientRect().bottom+window.scrollY-panel+8;
+  const firstRow=rows[Math.floor(first/2)];
+  if(firstRow){const yFirst=firstRow.getBoundingClientRect().top+window.scrollY-head-8;if(yFirst>y)y=yFirst}
+  window.scrollTo({top:Math.max(0,y),behavior:instant?"auto":"smooth"});
+}
+let lastView=null;
 function bringToTop(i,instant){
+  lastView=()=>bringToTop(i,true);
   const row=$("grid").children[Math.floor(i/2)];if(!row)return;
   const head=document.querySelector("header").getBoundingClientRect().bottom;
   const off=window.visualViewport?visualViewport.offsetTop:0;
@@ -216,7 +230,7 @@ function bringToTop(i,instant){
 }
 // keep the selected blocks in view when the keyboard opens/closes
 let reTimer=null;
-function reanchor(){clearTimeout(reTimer);reTimer=setTimeout(()=>{if(selected.size)bringToTop(Math.min(...selected),true)},280)}
+function reanchor(){clearTimeout(reTimer);reTimer=setTimeout(()=>{if(selected.size)(lastView||(()=>bringToTop(Math.min(...selected),true)))()},280)}
 function chip(it,fn){const b=document.createElement("button");b.className="chip";b.textContent=it.name;b.style.background=it.color;b.style.color=textOn(it.color);b.onclick=fn;return b}
 function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter(n=>n!==name);rec.unshift(name);save("mm-recent",rec.slice(0,8));write([...selected],name)}
 function renderSheet(){
@@ -248,7 +262,7 @@ function untilNow(){
   if(selected.size){st=Math.min(...selected);if(st>end){toast("Pick a block before now first");return}}
   else{if(end<0||cells[end]){toast("No empty blocks right before now. Tap a start block first.");return}
     st=end;while(st>0&&!cells[st-1])st--}
-  selected.clear();anchor=null;for(let k=st;k<=end;k++)selected.add(k);render();bringToTop(st);focusSearch();
+  selected.clear();anchor=null;for(let k=st;k<=end;k++)selected.add(k);render();showRecent(Math.min(end+1,47),st);focusSearch();
 }
 $("untilBtn").onclick=untilNow;
 $("rangeBtn").onclick=()=>{rangeMode=!rangeMode;anchor=null;render()};
