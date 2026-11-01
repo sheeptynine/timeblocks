@@ -35,6 +35,12 @@ header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-a
 .brand h1{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:22px}
 .status{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
 .status.err{color:var(--warn)}
+.brand .right{display:flex;align-items:center;gap:8px}
+.savebtn{height:32px;padding:0 12px;border-radius:999px;border:0;background:var(--accent);color:var(--accent-fg);font:600 13px var(--body);cursor:pointer;white-space:nowrap}
+.savebtn:disabled{opacity:.6}
+.cell.pending{box-shadow:inset 0 0 0 2px var(--fg);}
+.cell.pending::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--fg);opacity:.8}
+.cell{position:relative}
 .daynav{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;gap:8px}
 .arrow{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font-size:20px;cursor:pointer}
 .arrow:disabled{opacity:.35}
@@ -86,7 +92,7 @@ header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-a
 <body>
 <div class="wrap">
   <header>
-    <div class="brand"><h1>TimeBlocks</h1><span class="status" id="status">Loading your sheet…</span></div>
+    <div class="brand"><h1>TimeBlocks</h1><span class="right"><span class="status" id="status">Loading your sheet…</span><button class="savebtn" id="saveBtn" hidden>Save</button></span></div>
     <div class="daynav">
       <button class="arrow" id="prev" aria-label="Previous day">‹</button>
       <div class="daylabel"><strong id="dayname">—</strong><button id="today" hidden>Jump to today</button></div>
@@ -116,7 +122,11 @@ header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-a
 
 <script>
 const $=id=>document.getElementById(id);
-let start=null,palette=[],lookup=new Map(),day=null,cells=Array(48).fill(""),prevCells=Array(48).fill(""),selected=new Set(),rangeMode=true,anchor=null,busy=false;
+let start=null,palette=[],lookup=new Map(),day=null,cells=Array(48).fill(""),prevCells=Array(48).fill(""),selected=new Set(),rangeMode=true,anchor=null,busy=false,saving=false;
+const EMPTY=()=>Array(48).fill("");
+// serverDays: last known copy of each day from the sheet (cached on the device for instant start)
+// pending: edits not yet saved, {date:{slot:value}} — also kept on the device so nothing is lost
+let serverDays={},pending={};
 
 const CONN_KEY="tb-conn";let conn=null;
 function readConn(){const h=new URLSearchParams(location.hash.slice(1));if(h.get("api")&&h.get("key")){conn={api:h.get("api"),key:h.get("key")};save(CONN_KEY,conn)}else conn=load(CONN_KEY,null)}
@@ -149,23 +159,65 @@ function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout
 function setStatus(m,err){$("status").textContent=m;$("status").classList.toggle("err",!!err)}
 function showError(err,retry){const n=$("notice");n.innerHTML="";const p=document.createElement("p");p.textContent="Couldn't reach the sheet: "+((err&&err.message)||err);n.appendChild(p);if(retry){const b=document.createElement("button");b.className="btn primary";b.textContent="Try again";b.onclick=()=>{n.hidden=true;retry()};n.appendChild(b)}const c=document.createElement("button");c.className="btn";c.textContent="Change connection";c.onclick=()=>showSetup();n.appendChild(c);n.hidden=false;setStatus("Error",true)}
 function setPalette(p){palette=p;lookup=new Map();p.forEach(c=>c.items.forEach(it=>lookup.set(it.name.toLowerCase(),{...it,cat:c.name})))}
-function synced(){setStatus("Synced "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}
+function synced(){if(!document.getElementById("status"))return;setStatus("Synced "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}
 
+function shift(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
+function inRange(d){return start&&diffDays(start,d)>=0&&diffDays(start,d)<=365}
+function view(ds){const base=(serverDays[ds]||EMPTY()).slice(),p=pending[ds]||{};for(const k in p)base[k]=p[k];return base}
+function refreshCells(){cells=view(iso(day));const pd=shift(day,-1);prevCells=inRange(pd)?view(iso(pd)):EMPTY()}
+function persist(){
+  const keep={};[-3,-2,-1,0,1].forEach(n=>{const k=iso(shift(day,n));if(serverDays[k])keep[k]=serverDays[k]});
+  save("tb-cache",{start:start?iso(start):null,palette:palette,days:keep});save("tb-pending",pending);
+}
+function pendingCount(){let n=0;for(const d in pending)n+=Object.keys(pending[d]).length;return n}
+function updateSaveBtn(){const n=pendingCount(),b=$("saveBtn");b.hidden=!n;b.disabled=saving;b.textContent=saving?"Saving…":"Save "+n+(n===1?" change":" changes");$("status").hidden=!!n}
+const inflight={};
+function fetchDay(d){const ds=iso(d);if(!inRange(d))return Promise.resolve();if(inflight[ds])return inflight[ds];
+  inflight[ds]=gs("getDay",ds).then(c=>{serverDays[ds]=c}).finally(()=>{delete inflight[ds]});return inflight[ds]}
+// load the shown day and the day before (for Sleep) at the same time; prefetch neighbours quietly
+async function loadDay(quiet){
+  const want=iso(day);if(!quiet)setStatus("Loading…");
+  await Promise.all([fetchDay(day),fetchDay(shift(day,-1)).catch(()=>{})]);
+  if(iso(day)!==want)return;
+  refreshCells();persist();render();synced();
+  fetchDay(shift(day,-2)).catch(()=>{});fetchDay(shift(day,1)).catch(()=>{});
+}
 async function boot(){
   if(!conn){showSetup();return}
-  try{setStatus("Loading…");const r=await gs("getInitial",iso(day));start=parseIso(r.start);setPalette(r.palette);
-    if(diffDays(start,day)<0||diffDays(start,day)>365){day=new Date(start);cells=await gs("getDay",iso(day))}else cells=r.cells;
-    await loadPrev();
-    selected.clear();render();synced();
-  }catch(e){showError(e,boot)}
+  const c=load("tb-cache",null);pending=load("tb-pending",{})||{};
+  if(c&&c.start&&c.palette){start=parseIso(c.start);setPalette(c.palette);serverDays=c.days||{};refreshCells();render();setStatus("Updating…")}
+  try{
+    const prevP=gs("getDay",iso(shift(day,-1))).catch(()=>null);
+    const r=await gs("getInitial",iso(day));start=parseIso(r.start);setPalette(r.palette);
+    if(!inRange(day)){day=new Date(start);await fetchDay(day)}else serverDays[iso(day)]=r.cells;
+    const pv=await prevP;if(pv&&inRange(shift(day,-1)))serverDays[iso(shift(day,-1))]=pv;
+    refreshCells();persist();render();synced();
+    fetchDay(shift(day,-2)).catch(()=>{});
+  }catch(e){if(c&&c.start)setStatus("Offline – showing saved copy",true);else showError(e,boot)}
 }
-function loadPrev(){if(!start||diffDays(start,day)<=0){prevCells=Array(48).fill("");return Promise.resolve()}const d=new Date(day);d.setDate(d.getDate()-1);return gs("getDay",iso(d)).then(c=>{prevCells=c}).catch(()=>{prevCells=Array(48).fill("")})}
-async function loadDay(){setStatus("Loading…");const [c]=await Promise.all([gs("getDay",iso(day)),loadPrev()]);cells=c;selected.clear();anchor=null;render();synced()}
-async function write(slots,value){
-  const prev=cells.slice();slots.forEach(i=>cells[i]=value);selected.clear();anchor=null;render();busy=true;setStatus("Saving…");
-  try{cells=await gs("saveSlots",iso(day),slots,value);render();setStatus("Saved");toast(value?"Saved to your sheet":"Cleared")}
-  catch(e){cells=prev;render();showError(e,()=>write(slots,value))}
-  finally{busy=false}
+// edits only change the screen; Save sends them to the sheet
+function write(slots,value){
+  const ds=iso(day),p=pending[ds]||(pending[ds]={}),srv=serverDays[ds]||EMPTY();
+  slots.forEach(i=>{if((srv[i]||"")===value)delete p[i];else p[i]=value});
+  if(!Object.keys(p).length)delete pending[ds];
+  selected.clear();anchor=null;refreshCells();persist();render();
+}
+async function saveAll(){
+  if(saving||!pendingCount())return;saving=true;updateSaveBtn();
+  const snap=JSON.parse(JSON.stringify(pending));
+  try{
+    await Promise.all(Object.keys(snap).map(async ds=>{
+      const ch=snap[ds],groups={};for(const k in ch)(groups[ch[k]]=groups[ch[k]]||[]).push(Number(k));
+      let fresh=null;
+      try{fresh=await gs("saveDay",ds,ch)}
+      catch(e){if(!/Unknown request/.test(e.message))throw e;
+        for(const v in groups)fresh=await gs("saveSlots",ds,groups[v],v)}
+      if(fresh)serverDays[ds]=fresh;
+      const p=pending[ds];if(p){for(const k in ch)if(p[k]===ch[k])delete p[k];if(!Object.keys(p).length)delete pending[ds]}
+    }));
+    toast("Saved to your sheet");synced();
+  }catch(e){showError(e,saveAll)}
+  finally{saving=false;refreshCells();persist();render()}
 }
 function render(){
   const t=todayDate();
@@ -185,12 +237,13 @@ function render(){
       const tt=document.createElement("span");tt.className="t";tt.textContent=String(h).padStart(2,"0")+":"+(k?"30":"00");
       const a=document.createElement("span");a.className="a";a.textContent=v||(i===nowSlot?"Now":"");
       if(v&&info){b.classList.add("filled");b.style.background=info.color;b.style.color=textOn(info.color)}else if(v){b.classList.add("unknown")}
+      if(pending[iso(day)]&&(i in pending[iso(day)]))b.classList.add("pending");
       if(selected.has(i))b.classList.add("sel");if(anchor===i)b.classList.add("anchor");
       b.append(tt,a);b.onclick=()=>tap(i);row.appendChild(b);
     }
     g.appendChild(row);
   }
-  renderSheet();
+  renderSheet();updateSaveBtn();
 }
 function tap(i){
   if(busy)return;
@@ -268,9 +321,11 @@ $("untilBtn").onclick=untilNow;
 $("rangeBtn").onclick=()=>{rangeMode=!rangeMode;anchor=null;render()};
 $("doneBtn").onclick=()=>{selected.clear();anchor=null;render()};
 $("clearBtn").onclick=()=>write([...selected],"");
-function go(delta){if(busy||!start)return;const d=new Date(day);d.setDate(d.getDate()+delta);if(diffDays(start,d)<0||diffDays(start,d)>365)return;day=d;cells=Array(48).fill("");prevCells=Array(48).fill("");render();loadDay().catch(e=>showError(e,loadDay))}
+function go(delta){if(!start)return;const d=shift(day,delta);if(!inRange(d))return;day=d;selected.clear();anchor=null;refreshCells();render();
+  const cached=!!serverDays[iso(day)];loadDay(cached).catch(e=>{if(!cached)showError(e,()=>loadDay())})}
+$("saveBtn").onclick=saveAll;
 $("prev").onclick=()=>go(-1);$("next").onclick=()=>go(1);$("today").onclick=()=>go(diffDays(day,todayDate()));
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&start&&!busy&&!selected.size)loadDay().catch(()=>{})});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&start&&!saving&&!selected.size)loadDay(true).catch(()=>{})});
 let maxH=0,kbAt=0;
 function fitVV(){const h=window.visualViewport?visualViewport.height:innerHeight;document.documentElement.style.setProperty("--vvh",h+"px");
   maxH=Math.max(maxH,innerHeight,h);document.documentElement.style.setProperty("--padh",maxH+"px");if(Date.now()-kbAt<1200)reanchor()}
