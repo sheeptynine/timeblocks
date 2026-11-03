@@ -335,6 +335,8 @@ $("search").addEventListener("blur",()=>{kbAt=Date.now();setTimeout(reanchor,300
 if(window.visualViewport)visualViewport.addEventListener("resize",fitVV);addEventListener("resize",fitVV);fitVV();
 readConn();day=todayDate();render();boot();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+// ask the browser not to clear this app's saved data (connection, unsaved edits)
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{})}catch(e){}
 </script>
 </body>
 </html>
