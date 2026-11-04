@@ -28,6 +28,15 @@ html,body{margin:0;background:var(--bg);min-height:100%}
 .notice input{width:100%}
 body{color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+/* iPhone search mode: the panel jumps to the top of the screen, search box first, results under it */
+body.searching .sheet{top:0;bottom:auto;transform:translateY(var(--vvtop,0px));border-top:0;border-bottom:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.25);padding-top:env(safe-area-inset-top,0px);padding-bottom:0}
+body.searching .sheet .in{padding-top:10px}
+body.searching #search{order:-1}
+body.searching .top{order:-2}
+body.searching #recentWrap{order:0}
+body.searching .picker{order:1;max-height:max(120px,calc(var(--vvh,100vh) - 190px - env(safe-area-inset-top,0px)))}
+body.searching #hint{display:none}
+.range{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
 /* while typing on iPhone: keep only the title in the header to leave room */
 body.kb header .daynav,body.kb header .meter{display:none}
 body.kb #recentWrap{display:none!important}
@@ -291,9 +300,9 @@ function chip(it,fn){const b=document.createElement("button");b.className="chip"
 function assign(name){$("search").value="";const rec=load("mm-recent",[]).filter(n=>n!==name);rec.unshift(name);save("mm-recent",rec.slice(0,8));write([...selected],name)}
 function renderSheet(){
   const n=selected.size,c=$("selcount");document.querySelector(".wrap").classList.toggle("picking",n>0);c.innerHTML="";
-  if(n){c.textContent=n+(n===1?" block":" blocks");const s=document.createElement("small");s.textContent=(n/2).toFixed(1)+" h";c.appendChild(s)}else c.textContent=rangeMode?"Tap the first block":"Tap blocks to select them";
+  if(n){c.textContent=n+(n===1?" block":" blocks");const s=document.createElement("small");s.textContent=(n/2).toFixed(1)+" h";c.appendChild(s);if(document.body.classList.contains("searching")){const sl=[...selected].sort((a,b)=>a-b),f=x=>String(Math.floor(x/2)).padStart(2,"0")+":"+(x%2?"30":"00"),rg=document.createElement("span");rg.className="range";rg.textContent=f(sl[0])+"\u2013"+f(sl[sl.length-1]+1);c.appendChild(rg)}}else c.textContent=rangeMode?"Tap the first block":"Tap blocks to select them";
   $("clearBtn").hidden=!n||![...selected].some(i=>cells[i]);$("doneBtn").hidden=!n;$("untilBtn").hidden=!start||diffDays(todayDate(),day)>0;$("rangeBtn").textContent=rangeMode?"Range":"Single";$("hint").hidden=!rangeMode||n>0;
-  $("search").hidden=!n;if(!n)$("search").value="";
+  $("search").hidden=!n;if(!n){$("search").value="";if(document.body.classList.contains("searching")){document.body.classList.remove("searching");try{$("search").blur()}catch(e){}}}
   $("picker").hidden=!n;$("recentWrap").hidden=true;if(!n)return;
   renderPicker();
 }
@@ -309,6 +318,15 @@ function renderPicker(){
   if(!list.length){const p=document.createElement("p");p.className="nomatch";p.textContent="No activity matches \u201c"+q+"\u201d. Add it to the Palette sheet, then reopen the app.";pk.appendChild(p);return}
   list.forEach(cat=>{const d=document.createElement("div");d.className="cat";const h=document.createElement("h3");h.textContent=cat.name;const cc=document.createElement("div");cc.className="chips";cat.items.forEach(it=>cc.appendChild(chip(it,()=>assign(it.name))));d.append(h,cc);pk.appendChild(d)});
 }
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+let searchOffT=null;
+function searchMode(on){if(!IOS)return;clearTimeout(searchOffT);
+  if(on){if(!document.body.classList.contains("searching")){document.body.classList.add("searching");renderSheet()}}
+  else searchOffT=setTimeout(()=>{document.body.classList.remove("searching");renderSheet();reanchor()},250)}
+// switch before the keyboard opens so iOS doesn't slide the page
+$("search").addEventListener("touchstart",e=>{if(!IOS||document.body.classList.contains("searching"))return;e.preventDefault();searchMode(true);$("search").focus()},{passive:false});
+$("search").addEventListener("focus",()=>searchMode(true));
+$("search").addEventListener("blur",()=>searchMode(false));
 $("search").addEventListener("input",renderPicker);
 $("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const m=matches();if(m.length&&$("search").value.trim())assign(m[0].items[0].name)}});
 function untilNow(){
