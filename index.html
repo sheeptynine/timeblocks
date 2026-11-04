@@ -186,23 +186,32 @@ function updateSaveBtn(){const n=pendingCount(),b=$("saveBtn");b.hidden=!n;b.dis
 const inflight={};
 function fetchDay(d){const ds=iso(d);if(!inRange(d))return Promise.resolve();if(inflight[ds])return inflight[ds];
   inflight[ds]=gs("getDay",ds).then(c=>{serverDays[ds]=c}).finally(()=>{delete inflight[ds]});return inflight[ds]}
+let hasGetDays=true;
+// several days in one request when Code.gs supports it
+async function fetchDays(ds){
+  const list=ds.filter(inRange).map(iso);if(!list.length)return;
+  if(hasGetDays){try{const m=await gs("getDays",list);for(const k in m)serverDays[k]=m[k];return}
+    catch(e){if(!/Unknown request/.test(e.message))throw e;hasGetDays=false}}
+  await Promise.all(ds.filter(inRange).map(d=>fetchDay(d).catch(()=>{})));
+}
 // load the shown day and the day before (for Sleep) at the same time; prefetch neighbours quietly
 async function loadDay(quiet){
   const want=iso(day);if(!quiet)setStatus("Loading…");
-  await Promise.all([fetchDay(day),fetchDay(shift(day,-1)).catch(()=>{})]);
+  await fetchDays([day,shift(day,-1)]);
   if(iso(day)!==want)return;
   refreshCells();persist();render();synced();
-  fetchDay(shift(day,-2)).catch(()=>{});fetchDay(shift(day,1)).catch(()=>{});
+  fetchDays([shift(day,-2),shift(day,1)]).then(persist).catch(()=>{});
 }
 async function boot(){
   if(!conn){showSetup();return}
   const c=load("tb-cache",null);pending=load("tb-pending",{})||{};
   if(c&&c.start&&c.palette){start=parseIso(c.start);setPalette(c.palette);serverDays=c.days||{};refreshCells();render();setStatus("Updating…")}
   try{
-    const prevP=gs("getDay",iso(shift(day,-1))).catch(()=>null);
-    const r=await gs("getInitial",iso(day));start=parseIso(r.start);setPalette(r.palette);
+    // newer Code.gs sends the day before too; with an older one, ask for it at the same time
+    const newApi=load("tb-newapi",false),prevP=newApi?null:gs("getDay",iso(shift(day,-1))).catch(()=>null);
+    const r=await gs("getInitial",iso(day));start=parseIso(r.start);setPalette(r.palette);save("tb-newapi",!!r.prev);
     if(!inRange(day)){day=new Date(start);await fetchDay(day)}else serverDays[iso(day)]=r.cells;
-    const pv=await prevP;if(pv&&inRange(shift(day,-1)))serverDays[iso(shift(day,-1))]=pv;
+    const pv=r.prev||(prevP?await prevP:null);if(pv&&inRange(shift(day,-1)))serverDays[iso(shift(day,-1))]=pv;
     refreshCells();persist();render();synced();
     fetchDay(shift(day,-2)).catch(()=>{});
   }catch(e){if(c&&c.start)setStatus("Offline – showing saved copy",true);else showError(e,boot)}
