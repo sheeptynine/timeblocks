@@ -28,9 +28,12 @@ html,body{margin:0;background:var(--bg);min-height:100%}
 .notice input{width:100%}
 body{color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+/* while typing on iPhone: keep only the title in the header to leave room */
+body.kb header .daynav,body.kb header .meter{display:none}
+body.kb #recentWrap{display:none!important}
 .wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 240px}
 .wrap.picking{padding-bottom:var(--padh,100vh)}
-header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px))) calc(-1*max(16px,env(safe-area-inset-right,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:5;transform:translateY(var(--vvtop,0px));margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px))) calc(-1*max(16px,env(safe-area-inset-right,0px)));padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));background:var(--bg);padding-top:calc(env(safe-area-inset-top,0px) + 14px);padding-bottom:10px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
 .brand{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .brand h1{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:22px}
 .status{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
@@ -64,7 +67,7 @@ header{position:sticky;top:0;z-index:5;margin-inline:calc(-1*max(16px,env(safe-a
 .cell.unknown{border:1px dashed var(--warn);color:var(--warn);background:var(--surface)}
 .cell.sel{outline:3px solid var(--sel);outline-offset:-3px}
 .cell.anchor{outline-style:dashed}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.12);padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet{position:fixed;left:0;right:0;bottom:var(--kb,0px);z-index:20;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.12);padding-bottom:env(safe-area-inset-bottom,0px)}
 .sheet .in{max-width:560px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));display:grid;gap:10px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .count{font-weight:600}
@@ -327,12 +330,20 @@ $("saveBtn").onclick=saveAll;
 $("prev").onclick=()=>go(-1);$("next").onclick=()=>go(1);$("today").onclick=()=>go(diffDays(day,todayDate()));
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&start&&!saving&&!selected.size)loadDay(true).catch(()=>{})});
 let maxH=0,kbAt=0;
-function fitVV(){const h=window.visualViewport?visualViewport.height:innerHeight;document.documentElement.style.setProperty("--vvh",h+"px");
+// iPhone Safari slides the page up under the keyboard instead of resizing it.
+// Follow the visible area: pin the header to its top and the panel to just above the keyboard.
+function fitKB(){
+  const vv=window.visualViewport;if(!vv)return;const st=document.documentElement.style;
+  const top=Math.max(0,vv.offsetTop),kb=Math.max(0,innerHeight-vv.height-vv.offsetTop);
+  st.setProperty("--vvtop",top+"px");st.setProperty("--kb",kb+"px");
+  document.body.classList.toggle("kb",document.activeElement===$("search")&&(kb>40||top>40||innerHeight-vv.height>120));
+}
+function fitVV(){fitKB();const h=window.visualViewport?visualViewport.height:innerHeight;document.documentElement.style.setProperty("--vvh",h+"px");
   maxH=Math.max(maxH,innerHeight,h);document.documentElement.style.setProperty("--padh",maxH+"px");if(Date.now()-kbAt<1200)reanchor()}
 addEventListener("orientationchange",()=>{maxH=0;setTimeout(fitVV,300)});
-$("search").addEventListener("focus",()=>{kbAt=Date.now();reanchor();setTimeout(reanchor,450)});
-$("search").addEventListener("blur",()=>{kbAt=Date.now();setTimeout(reanchor,300)});
-if(window.visualViewport)visualViewport.addEventListener("resize",fitVV);addEventListener("resize",fitVV);fitVV();
+$("search").addEventListener("focus",()=>{kbAt=Date.now();fitKB();setTimeout(fitVV,300);setTimeout(fitVV,650);reanchor();setTimeout(reanchor,700)});
+$("search").addEventListener("blur",()=>{kbAt=Date.now();document.body.classList.remove("kb");setTimeout(fitKB,350);setTimeout(reanchor,300)});
+if(window.visualViewport){visualViewport.addEventListener("resize",fitVV);visualViewport.addEventListener("scroll",fitKB)}addEventListener("resize",fitVV);fitVV();
 readConn();day=todayDate();render();boot();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 // ask the browser not to clear this app's saved data (connection, unsaved edits)
