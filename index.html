@@ -98,6 +98,21 @@ header{position:sticky;top:0;z-index:5;transform:translateY(var(--vvtop,0px));ma
 .recent{display:flex;gap:6px;overflow-x:auto;max-width:100%}
 .recent .chip{flex:0 0 auto}
 .hint{font-size:12px;color:var(--muted);margin:0}
+.addbtn{border:1px dashed var(--accent);background:none;color:var(--accent);border-radius:999px;padding:9px 14px;font:600 14px var(--body);cursor:pointer;justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:calc(env(safe-area-inset-top,0px) + 12px)}
+.modal .card{width:calc(100% - 24px);max-width:520px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;max-height:calc(var(--vvh,100vh) - 24px - env(safe-area-inset-top,0px));overflow-y:auto;transform:translateY(var(--vvtop,0px))}
+.modal h2{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:20px}
+.modal .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:8px 12px;font:500 13px var(--body);cursor:pointer}
+.opt.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.subs{display:grid;gap:6px}
+.sub{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:12px;padding:8px 10px;font:500 13px var(--body);cursor:pointer;text-align:left}
+.sub .dot{flex:0 0 22px;height:22px;border-radius:6px}
+.sub .ex{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub.on{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
+.row2{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.err{color:var(--warn);font-size:13px;margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);z-index:30;background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px}
 </style>
 </head>
@@ -131,6 +146,14 @@ header{position:sticky;top:0;z-index:5;transform:translateY(var(--vvtop,0px));ma
   <p class="hint" id="hint" hidden>Tap the first and last block to select everything between. Switch to Single to pick blocks one by one.</p>
 </div></div>
 <div class="toast" id="toast" hidden></div>
+<div class="modal" id="addModal" hidden><div class="card" role="dialog" aria-labelledby="addTitle">
+  <h2 id="addTitle">Add new activity</h2>
+  <input class="search" id="addName" autocomplete="off" maxlength="40" placeholder="Activity name">
+  <p class="lbl">Category</p><div class="opts" id="addCats"></div>
+  <p class="lbl" id="subLbl" hidden>Sub-category (colour)</p><div class="subs" id="addSubs"></div>
+  <p class="err" id="addErr" hidden></p>
+  <div class="row2"><button class="btn" id="addCancel">Cancel</button><button class="btn primary" id="addSave" disabled>Add &amp; log</button></div>
+</div></div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -324,9 +347,40 @@ function renderPicker(){
   if(!q){const recent=load("mm-recent",[]).map(x=>lookup.get(x.toLowerCase())).filter(Boolean);
     if(recent.length){recent.forEach(it=>rc.appendChild(chip(it,()=>assign(it.name))));rw.hidden=false}}
   const list=matches();
-  if(!list.length){const p=document.createElement("p");p.className="nomatch";p.textContent="No activity matches \u201c"+q+"\u201d. Add it to the Palette sheet, then reopen the app.";pk.appendChild(p);return}
+  if(!list.length){const p=document.createElement("p");p.className="nomatch";p.textContent="No activity matches \u201c"+q+"\u201d.";
+    const a=document.createElement("button");a.className="addbtn";a.textContent="+ Add \u201c"+q+"\u201d";a.onclick=()=>openAdd(q);pk.append(p,a);return}
   list.forEach(cat=>{const d=document.createElement("div");d.className="cat";const h=document.createElement("h3");h.textContent=cat.name;const cc=document.createElement("div");cc.className="chips";cat.items.forEach(it=>cc.appendChild(chip(it,()=>assign(it.name))));d.append(h,cc);pk.appendChild(d)});
 }
+// ---- Add new activity: name -> category -> sub-category (one of the category's colours) ----
+let addCat=null,addColor=null;
+function subGroups(catName){const c=palette.find(x=>x.name===catName),g=[];
+  (c?c.items:[]).forEach(it=>{const k=it.color.toLowerCase();let e=g.find(x=>x.color===k);if(!e)g.push(e={color:k,names:[]});e.names.push(it.name)});return g}
+function renderAdd(){
+  const cw=$("addCats");cw.innerHTML="";
+  palette.forEach(c=>{const b=document.createElement("button");b.type="button";b.className="opt"+(c.name===addCat?" on":"");b.textContent=c.name;
+    b.onclick=()=>{addCat=c.name;const g=subGroups(addCat);addColor=g.length===1?g[0].color:null;renderAdd()};cw.appendChild(b)});
+  const sw=$("addSubs");sw.innerHTML="";$("subLbl").hidden=!addCat;
+  if(addCat)subGroups(addCat).forEach(g=>{const b=document.createElement("button");b.type="button";b.className="sub"+(g.color===addColor?" on":"");
+    const d=document.createElement("span");d.className="dot";d.style.background=g.color;
+    const t=document.createElement("span");t.className="ex";t.textContent="Like "+g.names.join(", ");
+    b.append(d,t);b.onclick=()=>{addColor=g.color;renderAdd()};sw.appendChild(b)});
+  $("addSave").disabled=!($("addName").value.trim()&&addCat&&addColor);
+}
+function openAdd(q){addCat=null;addColor=null;$("addName").value=q||"";$("addErr").hidden=true;$("addModal").hidden=false;
+  try{$("search").blur()}catch(e){}renderAdd()}
+function closeAdd(){$("addModal").hidden=true}
+$("addName").addEventListener("input",renderAdd);
+$("addCancel").onclick=closeAdd;
+$("addModal").addEventListener("click",e=>{if(e.target.id==="addModal")closeAdd()});
+$("addSave").onclick=async()=>{
+  const name=$("addName").value.trim(),err=$("addErr"),btn=$("addSave");err.hidden=true;
+  if(lookup.has(name.toLowerCase())){err.textContent="\u201c"+name+"\u201d is already in the Palette.";err.hidden=false;return}
+  btn.disabled=true;btn.textContent="Adding…";
+  try{const p=await gs("addActivity",addCat,name,addColor);setPalette(p);persist();closeAdd();toast("Added to the Palette");
+    if(selected.size)assign(name);else render()}
+  catch(e){const m=(e&&e.message)||String(e);err.textContent=m==="Unknown request"?"This needs the latest Code.gs. Paste it in Apps Script and redeploy first.":m;err.hidden=false}
+  finally{btn.textContent="Add & log";renderAdd()}
+};
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 let searchOffT=null;
 function searchMode(on){if(!IOS)return;clearTimeout(searchOffT);
@@ -337,7 +391,7 @@ $("search").addEventListener("touchstart",e=>{if(!IOS||document.body.classList.c
 $("search").addEventListener("focus",()=>searchMode(true));
 $("search").addEventListener("blur",()=>searchMode(false));
 $("search").addEventListener("input",renderPicker);
-$("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const m=matches();if(m.length&&$("search").value.trim())assign(m[0].items[0].name)}});
+$("search").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const q=$("search").value.trim(),m=matches();if(m.length&&q)assign(m[0].items[0].name);else if(q)openAdd(q)}});
 function untilNow(){
   if(busy)return;const t=todayDate(),dd=diffDays(t,day);if(dd>0)return;
   const n=new Date(),end=dd<0?47:n.getHours()*2+(n.getMinutes()>=30?1:0)-1;
