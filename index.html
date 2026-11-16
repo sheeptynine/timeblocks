@@ -100,6 +100,7 @@ header{position:sticky;top:0;z-index:5;transform:translateY(var(--vvtop,0px));ma
 .hint{font-size:12px;color:var(--muted);margin:0}
 .addbtn{border:1px dashed var(--accent);background:none;color:var(--accent);border-radius:999px;padding:9px 14px;font:600 14px var(--body);cursor:pointer;justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (min-width:700px){.modal{align-items:center;padding-top:0}.modal .card{transform:none}}
 .modal .card>*{min-width:0}
 .modal .card{grid-template-columns:minmax(0,1fr);width:calc(100% - 24px);max-width:520px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;max-height:calc(var(--vvh,100vh) - 24px - env(safe-area-inset-top,0px));overflow-y:auto;transform:translateY(var(--vvtop,0px))}
 .modal h2{margin:0;font-family:var(--display);font-style:italic;font-weight:500;font-size:20px}
@@ -369,7 +370,7 @@ function renderAdd(){
   $("addSave").disabled=!($("addName").value.trim()&&addCat&&addColor);
 }
 function openAdd(q){addCat=null;addColor=null;$("addName").value=q||"";$("addErr").hidden=true;$("addModal").hidden=false;
-  try{$("search").blur()}catch(e){}renderAdd()}
+  if(IOS){try{$("search").blur()}catch(e){}}renderAdd()}
 function closeAdd(){$("addModal").hidden=true}
 $("addName").addEventListener("input",renderAdd);
 $("addCancel").onclick=closeAdd;
@@ -383,7 +384,8 @@ $("addSave").onclick=async()=>{
   catch(e){const m=(e&&e.message)||String(e);err.textContent=m==="Unknown request"?"This needs the latest Code.gs. Paste it in Apps Script and redeploy first.":m;err.hidden=false}
   finally{btn.textContent="Add & log";renderAdd()}
 };
-const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+// Only iPhones need the "panel jumps to the top" search mode; iPads have room (and often a hardware keyboard).
+const IOS=(/iP(hone|od)/.test(navigator.userAgent))&&Math.min(screen.width,screen.height)<600;
 let searchOffT=null;
 function searchMode(on){if(!IOS)return;clearTimeout(searchOffT);
   if(on){if(!document.body.classList.contains("searching")){document.body.classList.add("searching");renderSheet()}}
