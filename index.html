@@ -95,7 +95,10 @@ header{position:sticky;top:0;z-index:5;transform:translateY(var(--vvtop,0px));ma
 .nomatch{margin:0;font-size:13px;color:var(--muted)}
 .sheet .in,.picker,.cat{grid-template-columns:minmax(0,1fr)}
 .sheet .in>*{min-width:0}
-.recent{display:flex;gap:6px;overflow-x:auto;max-width:100%}
+.recent{display:flex;gap:6px;overflow-x:auto;max-width:100%;scrollbar-width:none;padding-bottom:2px}
+.recent::-webkit-scrollbar{display:none}
+/* with a mouse (computers), wrap the recent chips instead of a sideways-scrolling row */
+@media (hover:hover) and (pointer:fine){.recent{flex-wrap:wrap;overflow:visible}}
 .recent .chip{flex:0 0 auto}
 .hint{font-size:12px;color:var(--muted);margin:0}
 .addbtn{border:1px dashed var(--accent);background:none;color:var(--accent);border-radius:999px;padding:9px 14px;font:600 14px var(--body);cursor:pointer;justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
